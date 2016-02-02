@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "timers.h"
 #include <CL/cl.h>
 
@@ -32,6 +33,11 @@ char *get_source_code(const char *file_name, size_t *len) {
   return source_code;
 }
 
+void in2buf(float *in, float *buf, size_t n, size_t m, size_t l, int sx, int sy) {
+    for (int x = 0; x < n; ++x)
+        memcpy(&buf[x * m], &in[(sx + x) * l + sy], sizeof(float) * m);
+}
+
 void mat_mul(float *a, float *b, float *c,
     size_t *dim, size_t *global_size, size_t *local_size) {
     cl_int err;
@@ -58,9 +64,13 @@ void mat_mul(float *a, float *b, float *c,
     printf("context : %lf sec\n", timer_read(14));
 
     timer_start(15);
-    cl_command_queue queue;
-    queue = clCreateCommandQueue(context, device, 0, &err);
+    cl_command_queue queueIO;
+    queueIO = clCreateCommandQueue(context, device, 0, &err);
     CHECK_ERROR(err);
+    cl_command_queue queueSM;
+    queueSM = clCreateCommandQueue(context, device, 0, &err);
+    CHECK_ERROR(err);
+
     timer_stop(15);
     printf("create queue : %lf sec\n", timer_read(15));
 
@@ -100,21 +110,29 @@ void mat_mul(float *a, float *b, float *c,
     printf("kernel create : %lf sec\n", timer_read(8));
 
     timer_start(9);
-    cl_mem memA = clCreateBuffer(context, CL_MEM_READ_ONLY,
+    cl_mem memA[2];
+    memA[0] = clCreateBuffer(context, CL_MEM_READ_ONLY,
         sizeof(float) * global_size[1] * global_size[2], NULL, &err);
     CHECK_ERROR(err);
-    cl_mem memB = clCreateBuffer(context, CL_MEM_READ_ONLY,
+    memA[1] = clCreateBuffer(context, CL_MEM_READ_ONLY,
+        sizeof(float) * global_size[1] * global_size[2], NULL, &err);
+    CHECK_ERROR(err);
+    cl_mem memB[2];
+    memB[0] = clCreateBuffer(context, CL_MEM_READ_ONLY,
         sizeof(float) * global_size[2] * global_size[0], NULL, &err);
     CHECK_ERROR(err);
-    cl_mem memC = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+    memB[1] = clCreateBuffer(context, CL_MEM_READ_ONLY,
+        sizeof(float) * global_size[2] * global_size[0], NULL, &err);
+    CHECK_ERROR(err);
+    cl_mem memC[2];
+    memC[0] = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
+        sizeof(float) * global_size[1] * global_size[0], NULL, &err);
+    CHECK_ERROR(err);
+    memC[1] = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
         sizeof(float) * global_size[1] * global_size[0], NULL, &err);
     CHECK_ERROR(err);
 
-    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &memA);
-    CHECK_ERROR(err);
-    err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &memB);
-    CHECK_ERROR(err);
-    err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &memC);
+    err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &memC[0]);
     CHECK_ERROR(err);
     err = clSetKernelArg(kernel, 3, sizeof(cl_ulong), &global_size[2]);
     CHECK_ERROR(err);
@@ -123,65 +141,137 @@ void mat_mul(float *a, float *b, float *c,
     timer_stop(9);
     printf("buffer create : %lf sec\n", timer_read(9));
 
-    float *bufA = (float*)malloc(sizeof(float) * global_size[1] * global_size[2]);
-    float *bufB = (float*)malloc(sizeof(float) * global_size[2] * global_size[0]);
-    float *bufC = (float*)malloc(sizeof(float) * global_size[1] * global_size[0]);
+    float *bufA, *bufB, *bufC;
+    bufA = (float*)malloc(sizeof(float) * global_size[1] * global_size[2]);
+    bufB = (float*)malloc(sizeof(float) * global_size[2] * global_size[0]);
+    bufC = (float*)malloc(sizeof(float) * global_size[1] * global_size[0]);
+
+    int swA = 0, swB = 0, swC = 0;
+    cl_uint num_events = 0;
+    cl_event event[3];
+    int xIO, yIO, xSM, ySM, xHost, yHost;
+    xIO = yIO = xSM = ySM = xHost = yHost = -1;
     for (int i = 0; i < dim[1]; i += global_size[1]) {
         for (int k = 0; k < dim[2]; k += global_size[2]) {
-            timer_start(2);
-            for (int x = 0; x < global_size[1]; ++x) {
-                for (int y = 0; y < global_size[2]; ++y) {
-                    bufA[x * global_size[2] + y] = a[(i + x) * dim[2] + (k + y)];
+            for (int j = 0; j < dim[0]; j += global_size[0]) {
+                if (num_events > 0) {
+                    err = clWaitForEvents(num_events, event);
+                    CHECK_ERROR(err);
+                }
+
+                if (xSM != -1) {
+                    err = clEnqueueReadBuffer(queueIO, memC[swC], CL_FALSE, 0,
+                        sizeof(float) * global_size[0] * global_size[1],
+                        bufC, 0, NULL, &event[1]);
+                    CHECK_ERROR(err);
+                    swC ^= 1;
+                    err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &memC[swC]);
+                    CHECK_ERROR(err);
+                    xHost = xSM; yHost = ySM;
+                }
+
+                num_events = 0;
+                if (xIO != -1) {
+                    err = clEnqueueNDRangeKernel(queueSM, kernel, 2, NULL,
+                        global_size, local_size, 0, NULL, &event[num_events++]);
+                    CHECK_ERROR(err);
+                    xSM = xIO; ySM = yIO;
+                }
+
+                if (xHost != -1) {
+                    err = clWaitForEvents(1, &event[1]);
+                    CHECK_ERROR(err);
+                }
+
+                if (j == 0) {
+                    in2buf(a, bufA, global_size[1], global_size[2], dim[2], i, k);
+                    err = clEnqueueWriteBuffer(queueIO, memA[swA], CL_FALSE, 0,
+                        sizeof(float) * global_size[1] * global_size[2],
+                        bufA, 0, NULL, &event[num_events++]);
+                    CHECK_ERROR(err);
+                    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &memA[swA]);
+                    CHECK_ERROR(err);
+                    swA ^= 1;
+                }
+
+                in2buf(b, bufB, global_size[2], global_size[0], dim[0], k, j);
+                err = clEnqueueWriteBuffer(queueIO, memB[swB], CL_FALSE, 0,
+                    sizeof(float) * global_size[2] * global_size[0],
+                    bufB, 0, NULL, &event[num_events++]);
+                CHECK_ERROR(err);
+                err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &memB[swB]);
+                CHECK_ERROR(err);
+                swB ^= 1;
+
+                xIO = i; yIO = j;
+
+                if (xHost != -1) {
+                    for (int x = 0; x < global_size[1]; ++x) {
+                        for (int y = 0; y < global_size[0]; ++y) {
+                            c[(xHost + x) * dim[0] + (yHost + y)] += bufC[x * global_size[0] + y];
+                        }
+                    }
                 }
             }
-            err = clEnqueueWriteBuffer(queue, memA, CL_FALSE, 0,
-                sizeof(float) * global_size[1] * global_size[2],
-                bufA, 0, NULL, NULL);
-            CHECK_ERROR(err);
-            clFinish(queue);
-            timer_stop(2);
-            printf("A copy : %lf sec\n", timer_read(2));
-            timer_clear(2);
-            for (int j = 0; j < dim[0]; j += global_size[0]) {
-                timer_start(3);
-                for (int x = 0; x < global_size[2]; ++x) {
-                    for (int y = 0; y < global_size[0]; ++y) {
-                        bufB[x * global_size[0] + y] = b[(k + x) * dim[0] + (j + y)];
-                    }
-                }
-                err = clEnqueueWriteBuffer(queue, memB, CL_FALSE, 0,
-                    sizeof(float) * global_size[2] * global_size[0],
-                    bufB, 0, NULL, NULL);
-                CHECK_ERROR(err);
-                clFinish(queue);
-                timer_stop(3);
-                printf("B copy : %lf sec\n", timer_read(3));
-                timer_clear(3);
-                timer_start(4);
-                err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
-                    global_size, local_size, 0, NULL, NULL);
-                CHECK_ERROR(err);
-                clFinish(queue);
-                timer_stop(4);
-                printf("Mult : %lf sec\n", timer_read(4));
-                timer_clear(4);
-                timer_start(5);
-                err = clEnqueueReadBuffer(queue, memC, CL_TRUE, 0,
-                    sizeof(float) * global_size[0] * global_size[1],
-                    bufC, 0, NULL, NULL);
-                CHECK_ERROR(err);
-                timer_stop(5);
-                printf("C copy : %lf sec\n", timer_read(5));
-                timer_clear(5);
-                timer_start(6);
-                for (int x = 0; x < global_size[1]; ++x) {
-                    for (int y = 0; y < global_size[0]; ++y) {
-                        c[(i + x) * dim[0] + (j + y)] += bufC[x * global_size[0] + y];
-                    }
-                }
-                timer_stop(6);
-                printf("C add : %lf sec\n", timer_read(6));
-                timer_clear(6);
+        }
+    }
+
+    if (num_events > 0) {
+        err = clWaitForEvents(num_events, event);
+        CHECK_ERROR(err);
+    }
+
+    if (xSM != -1) {
+        err = clEnqueueReadBuffer(queueIO, memC[swC], CL_FALSE, 0,
+            sizeof(float) * global_size[0] * global_size[1],
+            bufC, 0, NULL, &event[1]);
+        CHECK_ERROR(err);
+        swC ^= 1;
+        err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &memC[swC]);
+        CHECK_ERROR(err);
+        xHost = xSM; yHost = ySM;
+    }
+
+    num_events = 0;
+    if (xIO != -1) {
+        err = clEnqueueNDRangeKernel(queueSM, kernel, 2, NULL,
+            global_size, local_size, 0, NULL, &event[num_events++]);
+        CHECK_ERROR(err);
+        xSM = xIO; ySM = yIO;
+    }
+
+    if (xHost != -1) {
+        err = clWaitForEvents(1, &event[1]);
+        CHECK_ERROR(err);
+        for (int x = 0; x < global_size[1]; ++x) {
+            for (int y = 0; y < global_size[0]; ++y) {
+                c[(xHost + x) * dim[0] + (yHost + y)] += bufC[x * global_size[0] + y];
+            }
+        }
+    }
+
+    if (num_events > 0) {
+        err = clWaitForEvents(num_events, event);
+        CHECK_ERROR(err);
+    }
+
+    if (xSM != -1) {
+        err = clEnqueueReadBuffer(queueIO, memC[swC], CL_FALSE, 0,
+            sizeof(float) * global_size[0] * global_size[1],
+            bufC, 0, NULL, &event[1]);
+        CHECK_ERROR(err);
+        swC ^= 1;
+        err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &memC[swC]);
+        CHECK_ERROR(err);
+        xHost = xSM; yHost = ySM;
+    }
+
+    if (xHost != -1) {
+        err = clWaitForEvents(1, &event[1]);
+        CHECK_ERROR(err);
+        for (int x = 0; x < global_size[1]; ++x) {
+            for (int y = 0; y < global_size[0]; ++y) {
+                c[(xHost + x) * dim[0] + (yHost + y)] += bufC[x * global_size[0] + y];
             }
         }
     }
@@ -190,13 +280,17 @@ void mat_mul(float *a, float *b, float *c,
     free(bufA);
     free(bufB);
     free(bufC);
-    clReleaseMemObject(memA);
-    clReleaseMemObject(memB);
-    clReleaseMemObject(memC);
+    clReleaseMemObject(memA[0]);
+    clReleaseMemObject(memA[1]);
+    clReleaseMemObject(memB[0]);
+    clReleaseMemObject(memB[1]);
+    clReleaseMemObject(memC[0]);
+    clReleaseMemObject(memC[1]);
 
     clReleaseKernel(kernel);
     clReleaseProgram(program);
-    clReleaseCommandQueue(queue);
+    clReleaseCommandQueue(queueIO);
+    clReleaseCommandQueue(queueSM);
     clReleaseContext(context);
     timer_stop(10);
     printf("release : %lf sec\n", timer_read(10));

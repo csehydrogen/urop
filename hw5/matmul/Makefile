@@ -15,4 +15,4 @@ clean:
 	rm -rf $(TARGET) $(OBJS) task*
 
 run: $(TARGET)
-	thorq --add ./$(TARGET) -v
+	thorq --add --mode single --device gpu ./$(TARGET)

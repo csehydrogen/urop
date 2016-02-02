@@ -5,7 +5,7 @@
 #include <string.h>
 #include "timers.h"
 
-size_t const N = 1000;
+size_t const N = 10000;
 
 int print_matrix = 0;
 int validation = 0;
