@@ -83,7 +83,8 @@ void kmeans(int iteration_n, int class_n, int data_n, Point* centroids, Point* d
     kernel = clCreateKernel(program, "classify", &err);
     CHECK_ERROR(err);
 
-    size_t global_size = 65536, local_size = 256;
+    size_t global_size, local_size = 256;
+    global_size = (data_n + local_size - 1) / local_size * local_size;
     int n = (data_n + global_size - 1) / global_size * global_size;
     float *D = (float*)malloc(sizeof(float) * 2 * data_n);
     float *C = (float*)malloc(sizeof(float) * 2 * class_n);
@@ -124,8 +125,6 @@ void kmeans(int iteration_n, int class_n, int data_n, Point* centroids, Point* d
         sizeof(cl_float2) * data_n, D, 0, NULL, NULL);
     CHECK_ERROR(err);
     for (int iter = 0; iter < iteration_n; ++iter) {
-        printf("iter %d begin\n", iter);
-
         err = clEnqueueWriteBuffer(queueIO, memC, CL_TRUE, 0,
             sizeof(cl_float2) * class_n, C, 0, NULL, NULL);
         CHECK_ERROR(err);

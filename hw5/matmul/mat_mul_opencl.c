@@ -42,28 +42,18 @@ void mat_mul(float *a, float *b, float *c,
     size_t *dim, size_t *global_size, size_t *local_size) {
     cl_int err;
 
-    timer_start(12);
     cl_platform_id platform;
     err = clGetPlatformIDs(1, &platform, NULL);
     CHECK_ERROR(err);
-    timer_stop(12);
-    printf("platform : %lf sec\n", timer_read(12));
 
-    timer_start(13);
     cl_device_id device;
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
     CHECK_ERROR(err);
-    timer_stop(13);
-    printf("device : %lf sec\n", timer_read(13));
 
-    timer_start(14);
     cl_context context;
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
     CHECK_ERROR(err);
-    timer_stop(14);
-    printf("context : %lf sec\n", timer_read(14));
 
-    timer_start(15);
     cl_command_queue queueIO;
     queueIO = clCreateCommandQueue(context, device, 0, &err);
     CHECK_ERROR(err);
@@ -71,10 +61,6 @@ void mat_mul(float *a, float *b, float *c,
     queueSM = clCreateCommandQueue(context, device, 0, &err);
     CHECK_ERROR(err);
 
-    timer_stop(15);
-    printf("create queue : %lf sec\n", timer_read(15));
-
-    timer_start(11);
     const char *source_code;
     size_t source_size;
     source_code = get_source_code("kernel.cl", &source_size);
@@ -82,10 +68,7 @@ void mat_mul(float *a, float *b, float *c,
     cl_program program;
     program = clCreateProgramWithSource(context, 1, &source_code, &source_size, &err);
     CHECK_ERROR(err);
-    timer_stop(11);
-    printf("create program : %lf sec\n", timer_read(11));
 
-    timer_start(7);
     err = clBuildProgram(program, 1, &device, "", NULL, NULL);
     if (err == CL_BUILD_PROGRAM_FAILURE) {
         char *log;
@@ -98,18 +81,11 @@ void mat_mul(float *a, float *b, float *c,
         free(log);
     }
     CHECK_ERROR(err);
-    timer_stop(7);
-    printf("Compile : %lf sec\n", timer_read(7));
 
-
-    timer_start(8);
     cl_kernel kernel;
     kernel = clCreateKernel(program, "mat_mul", &err);
     CHECK_ERROR(err);
-    timer_stop(8);
-    printf("kernel create : %lf sec\n", timer_read(8));
 
-    timer_start(9);
     cl_mem memA[2];
     memA[0] = clCreateBuffer(context, CL_MEM_READ_ONLY,
         sizeof(float) * global_size[1] * global_size[2], NULL, &err);
@@ -138,8 +114,6 @@ void mat_mul(float *a, float *b, float *c,
     CHECK_ERROR(err);
     err = clSetKernelArg(kernel, 4, sizeof(cl_ulong), &global_size[0]);
     CHECK_ERROR(err);
-    timer_stop(9);
-    printf("buffer create : %lf sec\n", timer_read(9));
 
     float *bufA, *bufB, *bufC;
     bufA = (float*)malloc(sizeof(float) * global_size[1] * global_size[2]);
@@ -276,7 +250,6 @@ void mat_mul(float *a, float *b, float *c,
         }
     }
 
-    timer_start(10);
     free(bufA);
     free(bufB);
     free(bufC);
@@ -292,6 +265,4 @@ void mat_mul(float *a, float *b, float *c,
     clReleaseCommandQueue(queueIO);
     clReleaseCommandQueue(queueSM);
     clReleaseContext(context);
-    timer_stop(10);
-    printf("release : %lf sec\n", timer_read(10));
 }

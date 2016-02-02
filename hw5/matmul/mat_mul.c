@@ -107,7 +107,7 @@ int main(int argc, char** argv)
 
     // initialize matrices
     float *a, *b, *c;
-    size_t global_size[3] = {1024, 1024, 1024};
+    size_t global_size[3] = {4096, 4096, 4096};
     size_t local_size[2] = {16, 16};
     size_t dim[3] = {N, N, N};
     for (int i = 0; i < 3; ++i)
