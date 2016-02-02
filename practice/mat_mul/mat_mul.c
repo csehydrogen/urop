@@ -4,9 +4,9 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-static int ROW_A = 100;
-static int COL_A = 100;
-static int COL_B = 100;
+static int ROW_A = 1000;
+static int COL_A = 1000;
+static int COL_B = 1000;
 
 double get_time() {
   struct timeval tv;

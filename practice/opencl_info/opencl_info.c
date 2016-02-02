@@ -38,7 +38,7 @@ void PrintDeviceInfo(cl_device_id device) {
     cl_device_type device_type;
     err = clGetDeviceInfo(device, CL_DEVICE_TYPE, sizeof(device_type), &device_type, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_TYPE                :");
+    printf("- CL_DEVICE_TYPE                        :");
     if (device_type & CL_DEVICE_TYPE_CPU) printf(" CL_DEVICE_TYPE_CPU");
     if (device_type & CL_DEVICE_TYPE_GPU) printf(" CL_DEVICE_TYPE_GPU");
     if (device_type & CL_DEVICE_TYPE_ACCELERATOR) printf(" CL_DEVICE_TYPE_ACCELERATOR");
@@ -51,28 +51,33 @@ void PrintDeviceInfo(cl_device_id device) {
     buf = (char*)malloc(buf_size);
     err = clGetDeviceInfo(device, CL_DEVICE_NAME, buf_size, buf, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_NAME                : %s\n", buf);
+    printf("- CL_DEVICE_NAME                        : %s\n", buf);
     free(buf);
 
     size_t max_work_group_size;
     err = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &max_work_group_size, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_MAX_WORK_GROUP_SIZE : %u\n", max_work_group_size);
+    printf("- CL_DEVICE_MAX_WORK_GROUP_SIZE         : %u\n", max_work_group_size);
 
     cl_ulong global_mem_size;
     err = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &global_mem_size, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_GLOBAL_MEM_SIZE     : %u\n", global_mem_size);
+    printf("- CL_DEVICE_GLOBAL_MEM_SIZE             : %u\n", global_mem_size);
+
+    cl_ulong max_constant_buffer_size;
+    err = clGetDeviceInfo(device, CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE, sizeof(cl_ulong), &max_constant_buffer_size, NULL);
+    CHECK_ERROR(err);
+    printf("- CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE    : %u\n", max_constant_buffer_size);
 
     cl_ulong local_mem_size;
     err = clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &local_mem_size, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_LOCAL_MEM_SIZE      : %u\n", local_mem_size);
+    printf("- CL_DEVICE_LOCAL_MEM_SIZE              : %u\n", local_mem_size);
 
     cl_ulong max_mem_alloc_size;
     err = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &max_mem_alloc_size, NULL);
     CHECK_ERROR(err);
-    printf("- CL_DEVICE_MAX_MEM_ALLOC_SIZE  : %u\n", max_mem_alloc_size);
+    printf("- CL_DEVICE_MAX_MEM_ALLOC_SIZE          : %u\n", max_mem_alloc_size);
 }
 
 int main() {

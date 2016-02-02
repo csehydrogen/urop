@@ -1,4 +1,4 @@
-__kernel void mat_mul(__constant float *A, __constant float *B, __global float *C, int ROW_A, int COL_A, int COL_B) {
+__kernel void mat_mul(__global float *A, __global float *B, __global float *C, int ROW_A, int COL_A, int COL_B) {
     int i = get_global_id(0);
     int j = get_global_id(1);
     float s = 0.0f;
